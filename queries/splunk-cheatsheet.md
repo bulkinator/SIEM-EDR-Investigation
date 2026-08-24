@@ -1,286 +1,341 @@
-Splunk SPL Cheatsheet
+# Splunk SPL Cheatsheet
 
 A practical SPL reference for SOC investigations, threat hunting, and incident response.
 
-1. Basic Search
+---
 
+## 1. Basic Search
+
+```spl
 index=main
+```
 
 Search a specific sourcetype:
 
+```spl
 index=main sourcetype=windows_security
+```
 
 Search for an event code:
 
+```spl
 index=main EventCode=4624
+```
 
 Search multiple event codes:
 
+```spl
 index=main (EventCode=4624 OR EventCode=4625)
+```
 
 Search for a specific user:
 
+```spl
 index=main user="admin"
+```
 
 Search for a specific source IP:
 
+```spl
 index=main src_ip="192.168.1.100"
+```
 
-2. Time Filtering
+---
+
+## 2. Time Filtering
 
 Last 24 hours:
 
+```spl
 index=main earliest=-24h
+```
 
 Last 15 minutes:
 
+```spl
 index=main earliest=-15m
+```
 
 Specific time range:
 
+```spl
 index=main earliest="08/24/2026:08:00:00" latest="08/24/2026:09:00:00"
+```
 
-3. Useful SPL Commands
+---
 
-table
+## 3. Useful SPL Commands
+
+### `table`
 
 Display selected fields:
 
+```spl
 index=main EventCode=4625
 | table _time, user, src_ip, ComputerName
+```
 
-fields
+### `fields`
 
 Keep only selected fields:
 
+```spl
 index=main EventCode=4625
 | fields _time, user, src_ip
+```
 
 Remove a field:
 
+```spl
 index=main
 | fields - host
+```
 
-sort
+### `sort`
 
 Sort newest first:
 
+```spl
 index=main
 | sort -_time
+```
 
 Sort by highest count:
 
+```spl
 index=main EventCode=4625
 | stats count by src_ip
 | sort -count
+```
 
-dedup
+### `dedup`
 
 Remove duplicate values:
 
+```spl
 index=main
 | dedup src_ip
+```
 
-rename
+### `rename`
 
 Rename fields:
 
+```spl
 index=main
 | rename src_ip AS "Source IP"
+```
 
-4. Statistics
+---
+
+## 4. Statistics
 
 Count all matching events:
 
+```spl
 index=main EventCode=4625
 | stats count
+```
 
 Count by user:
 
+```spl
 index=main EventCode=4625
 | stats count by user
+```
 
 Count by user and source IP:
 
+```spl
 index=main EventCode=4625
 | stats count by user, src_ip
+```
 
 Find unique hosts:
 
+```spl
 index=main
 | stats dc(ComputerName) AS unique_hosts
+```
 
 Show all values:
 
+```spl
 index=main
 | stats values(src_ip) AS source_ips by user
+```
 
-Authentication Investigation
+---
 
-5. Failed Logins — Event ID 4625
+# Authentication Investigation
 
+## 5. Failed Logins — Event ID 4625
+
+```spl
 index=main EventCode=4625
 | table _time, user, src_ip, ComputerName
+```
 
 Top source IPs generating failed logins:
 
+```spl
 index=main EventCode=4625
 | stats count by src_ip
 | sort -count
+```
 
 Top targeted users:
 
+```spl
 index=main EventCode=4625
 | stats count by user
 | sort -count
+```
 
-6. Successful Logins — Event ID 4624
+---
 
+## 6. Successful Logins — Event ID 4624
+
+```spl
 index=main EventCode=4624
 | table _time, user, src_ip, Logon_Type, ComputerName
+```
 
 Successful RDP logins:
 
+```spl
 index=main EventCode=4624 Logon_Type=10
 | table _time, user, src_ip, ComputerName
+```
 
-Common Logon Types
+### Common Logon Types
 
-Logon Type
+| Logon Type | Meaning |
+|---|---|
+| 2 | Interactive |
+| 3 | Network |
+| 4 | Batch |
+| 5 | Service |
+| 7 | Unlock |
+| 8 | NetworkCleartext |
+| 10 | RemoteInteractive / RDP |
+| 11 | CachedInteractive |
 
-Meaning
+---
 
-2
+# Brute Force Detection
 
-Interactive
+## 7. Basic Brute Force Search
 
-3
-
-Network
-
-4
-
-Batch
-
-5
-
-Service
-
-7
-
-Unlock
-
-8
-
-NetworkCleartext
-
-10
-
-RemoteInteractive / RDP
-
-11
-
-CachedInteractive
-
-Brute Force Detection
-
-7. Basic Brute Force Search
-
+```spl
 index=main EventCode=4625
 | stats count by src_ip
 | where count > 10
 | sort -count
+```
 
 Brute force against individual accounts:
 
+```spl
 index=main EventCode=4625
 | stats count by src_ip, user
 | where count > 10
 | sort -count
+```
 
-8. Brute Force Within a 5-Minute Window
+---
 
+## 8. Brute Force Within a 5-Minute Window
+
+```spl
 index=main EventCode=4625
 | bin _time span=5m
 | stats count by _time, src_ip
 | where count > 10
 | sort -count
+```
 
-9. Failed Logins Followed by Success
+---
 
+## 9. Failed Logins Followed by Success
+
+```spl
 index=main (EventCode=4624 OR EventCode=4625)
 | stats count(eval(EventCode=4625)) AS failures,
         count(eval(EventCode=4624)) AS successes
         by user, src_ip
 | where failures > 10 AND successes > 0
+```
 
 Useful for detecting successful brute-force attacks.
 
-Windows Process Investigation
+---
 
-10. Process Creation — Windows Event ID 4688
+# Windows Process Investigation
 
+## 10. Process Creation — Windows Event ID 4688
+
+```spl
 index=main EventCode=4688
 | table _time, user, New_Process_Name, CommandLine, ParentProcessName
+```
 
 Search for command prompt:
 
+```spl
 index=main EventCode=4688 New_Process_Name="*cmd.exe"
+```
 
 Search for PowerShell:
 
+```spl
 index=main EventCode=4688 New_Process_Name="*powershell.exe"
+```
 
-Sysmon Investigation
+---
 
-11. Sysmon Event IDs
+# Sysmon Investigation
 
-Event ID
+## 11. Sysmon Event IDs
 
-Description
+| Event ID | Description |
+|---|---|
+| 1 | Process Creation |
+| 3 | Network Connection |
+| 7 | Image / DLL Load |
+| 10 | Process Access |
+| 11 | File Creation |
+| 13 | Registry Modification |
 
-1
+---
 
-Process Creation
+## 12. Sysmon Process Creation — Event ID 1
 
-3
-
-Network Connection
-
-7
-
-Image / DLL Load
-
-10
-
-Process Access
-
-11
-
-File Creation
-
-13
-
-Registry Modification
-
-12. Sysmon Process Creation — Event ID 1
-
+```spl
 index=sysmon EventCode=1
 | table _time, User, Image, ParentImage, CommandLine
+```
 
 Search for PowerShell:
 
+```spl
 index=sysmon EventCode=1 Image="*powershell.exe"
 | table _time, User, ParentImage, CommandLine
+```
 
-13. Encoded PowerShell
+---
 
+## 13. Encoded PowerShell
+
+```spl
 index=sysmon EventCode=1 Image="*powershell.exe"
 ("EncodedCommand" OR "-enc" OR "-encodedcommand")
 | table _time, User, ParentImage, CommandLine
+```
 
 Useful indicators:
 
+```text
 -enc
 -encodedcommand
 Invoke-Expression
@@ -288,18 +343,26 @@ IEX
 Invoke-WebRequest
 DownloadString
 Net.WebClient
+```
 
-LOLBin Detection
+---
 
-14. Office Applications Spawning PowerShell / CMD
+# LOLBin Detection
 
+## 14. Office Applications Spawning PowerShell / CMD
+
+```spl
 index=sysmon EventCode=1
 (ParentImage="*winword.exe" OR ParentImage="*excel.exe" OR ParentImage="*outlook.exe")
 (Image="*powershell.exe" OR Image="*cmd.exe")
 | table _time, User, ParentImage, Image, CommandLine
+```
 
-15. Suspicious LOLBins
+---
 
+## 15. Suspicious LOLBins
+
+```spl
 index=sysmon EventCode=1
 (Image="*rundll32.exe"
 OR Image="*regsvr32.exe"
@@ -307,219 +370,343 @@ OR Image="*certutil.exe"
 OR Image="*mshta.exe"
 OR Image="*wmic.exe")
 | table _time, User, ParentImage, Image, CommandLine
+```
 
-Credential Access
+---
 
-16. Possible LSASS Credential Dumping
+# Credential Access
 
+## 16. Possible LSASS Credential Dumping
+
+```spl
 index=sysmon EventCode=10 TargetImage="*lsass.exe"
 | table _time, ComputerName, User, SourceImage, TargetImage, GrantedAccess
+```
 
 Focus on unusual processes accessing LSASS:
 
+```spl
 index=sysmon EventCode=10 TargetImage="*lsass.exe"
 | where NOT like(SourceImage,"%svchost.exe")
 | table _time, User, SourceImage, TargetImage, GrantedAccess
+```
 
-17. Mimikatz Search
+---
 
+## 17. Mimikatz Search
+
+```spl
 index=sysmon
 ("mimikatz" OR "sekurlsa" OR "lsadump")
 | table _time, ComputerName, User, Image, CommandLine
+```
 
-Lateral Movement
+---
 
-18. PsExec Detection
+# Lateral Movement
 
+## 18. PsExec Detection
+
+```spl
 index=sysmon EventCode=1 Image="*psexec.exe"
 | table _time, User, ComputerName, ParentImage, CommandLine
+```
 
-19. WMI Detection
+---
 
+## 19. WMI Detection
+
+```spl
 index=sysmon EventCode=1
 (Image="*wmic.exe" OR ParentImage="*wmiprvse.exe")
 | table _time, User, ComputerName, ParentImage, Image, CommandLine
+```
 
-20. SMB Administrative Share Access
+---
 
+## 20. SMB Administrative Share Access
+
+```spl
 index=windows EventCode=5145 ShareName="*\\C$"
 | table _time, user, src_ip, ComputerName, ShareName
+```
 
-21. RDP Lateral Movement
+---
 
+## 21. RDP Lateral Movement
+
+```spl
 index=windows EventCode=4624 Logon_Type=10
 | stats count by user, src_ip, ComputerName
 | sort -count
+```
 
-Persistence
+---
 
-22. Registry Run Key Persistence
+# Persistence
 
+## 22. Registry Run Key Persistence
+
+```spl
 index=sysmon EventCode=13 TargetObject="*\\CurrentVersion\\Run*"
 | table _time, User, ComputerName, Image, TargetObject, Details
+```
 
-23. Scheduled Task Creation
+---
 
+## 23. Scheduled Task Creation
+
+```spl
 index=windows EventCode=4698
 | table _time, ComputerName, user, TaskName
+```
 
-24. New User Account Creation
+---
 
+## 24. New User Account Creation
+
+```spl
 index=windows EventCode=4720
 | table _time, ComputerName, SubjectUserName, TargetUserName
+```
 
-25. User Added to Privileged Group
+---
 
+## 25. User Added to Privileged Group
+
+```spl
 index=windows (EventCode=4728 OR EventCode=4732 OR EventCode=4756)
 | table _time, ComputerName, SubjectUserName, MemberName, GroupName
+```
 
-Network Investigation
+---
 
-26. Sysmon Network Connections — Event ID 3
+# Network Investigation
 
+## 26. Sysmon Network Connections — Event ID 3
+
+```spl
 index=sysmon EventCode=3
 | table _time, ComputerName, User, Image, DestinationIp, DestinationPort
+```
 
 PowerShell network activity:
 
+```spl
 index=sysmon EventCode=3 Image="*powershell.exe"
 | table _time, ComputerName, DestinationIp, DestinationPort
+```
 
-27. Suspicious Destination Ports
+---
 
+## 27. Suspicious Destination Ports
+
+```spl
 index=sysmon EventCode=3
 | where NOT DestinationPort IN (53,80,443)
 | stats count by DestinationIp, DestinationPort, Image
 | sort -count
+```
 
-Data Exfiltration
+---
 
-28. Large Outbound Transfers
+# Data Exfiltration
 
+## 28. Large Outbound Transfers
+
+```spl
 index=proxy bytes_out > 100000000
 | stats sum(bytes_out) AS total_bytes by src_ip, dest_domain
 | sort -total_bytes
+```
 
 Convert bytes to MB:
 
+```spl
 index=proxy
 | stats sum(bytes_out) AS total_bytes by src_ip, dest_domain
 | eval total_MB=round(total_bytes/1024/1024,2)
 | sort -total_MB
+```
 
-29. Suspicious Archive Creation
+---
 
+## 29. Suspicious Archive Creation
+
+```spl
 index=sysmon EventCode=11
 (TargetFilename="*.zip" OR TargetFilename="*.rar" OR TargetFilename="*.7z")
 | table _time, User, ComputerName, Image, TargetFilename
+```
 
-Ransomware Investigation
+---
 
-30. Suspicious File Encryption
+# Ransomware Investigation
 
+## 30. Suspicious File Encryption
+
+```spl
 index=sysmon EventCode=11
 (TargetFilename="*.encrypted" OR TargetFilename="*.locked")
 | stats dc(TargetFilename) AS files_modified by Image, User, ComputerName
 | sort -files_modified
+```
 
-31. Ransom Note Detection
+---
 
+## 31. Ransom Note Detection
+
+```spl
 index=sysmon EventCode=11
 (TargetFilename="*README*" OR TargetFilename="*DECRYPT*" OR TargetFilename="*RANSOM*")
 | table _time, ComputerName, User, Image, TargetFilename
+```
 
-Threat Hunting
+---
 
-32. Find Rare Processes
+# Threat Hunting
 
+## 32. Find Rare Processes
+
+```spl
 index=sysmon EventCode=1
 | stats count by Image
 | sort count
+```
 
-33. Find Rare Parent-Child Relationships
+---
 
+## 33. Find Rare Parent-Child Relationships
+
+```spl
 index=sysmon EventCode=1
 | stats count by ParentImage, Image
 | sort count
+```
 
 This can reveal unusual process chains such as:
 
+```text
 winword.exe -> powershell.exe
 excel.exe -> cmd.exe
 powershell.exe -> rundll32.exe
+```
 
-34. Search Activity for a Specific User
+---
 
+## 34. Search Activity for a Specific User
+
+```spl
 index=* user="jsmith"
 | sort _time
 | table _time, index, sourcetype, EventCode, ComputerName, src_ip
+```
 
-35. Search Activity for a Specific Host
+---
 
+## 35. Search Activity for a Specific Host
+
+```spl
 index=* ComputerName="WORKSTATION-05"
 | sort _time
+```
 
-36. Search Activity Around an Incident Time
+---
 
+## 36. Search Activity Around an Incident Time
+
+```spl
 index=* earliest="08/24/2026:14:20:00" latest="08/24/2026:15:20:00"
 | sort _time
+```
 
-Timeline Creation
+---
 
-37. Create an Event Timeline
+# Timeline Creation
 
+## 37. Create an Event Timeline
+
+```spl
 index=* user="jsmith"
 | sort _time
 | table _time, EventCode, ComputerName, Image, CommandLine, src_ip
+```
 
-38. Timeline Visualization
+---
 
+## 38. Timeline Visualization
+
+```spl
 index=main user="admin"
 | timechart count by EventCode
+```
 
-Useful SPL Functions
+---
 
-eval
+# Useful SPL Functions
+
+## `eval`
 
 Create a new field:
 
+```spl
 index=proxy
 | eval MB=round(bytes_out/1024/1024,2)
+```
 
-where
+---
+
+## `where`
 
 Filter numerical results:
 
+```spl
 index=main EventCode=4625
 | stats count by src_ip
 | where count > 10
+```
 
-bin
+---
+
+## `bin`
 
 Group events into time windows:
 
+```spl
 index=main EventCode=4625
 | bin _time span=5m
 | stats count by _time, src_ip
+```
 
-timechart
+---
+
+## `timechart`
 
 Visualize activity over time:
 
+```spl
 index=main EventCode=4625
 | timechart span=5m count
+```
 
-transaction
+---
+
+## `transaction`
 
 Correlate related events:
 
+```spl
 index=main (EventCode=4624 OR EventCode=4625)
 | transaction user maxspan=10m
+```
 
-Use transaction carefully because it can be expensive on large datasets.
+> Use `transaction` carefully because it can be expensive on large datasets.
 
-SOC Investigation Workflow
+---
 
+# SOC Investigation Workflow
+
+```text
 1. Review the alert
 2. Identify the affected user / host
 3. Determine the timeframe
@@ -535,103 +722,48 @@ SOC Investigation Workflow
 13. Extract IOCs
 14. Map activity to MITRE ATT&CK
 15. Recommend containment and remediation
+```
 
-Important Windows Event IDs
+---
 
-Event ID
+# Important Windows Event IDs
 
-Description
+| Event ID | Description |
+|---|---|
+| 4624 | Successful Logon |
+| 4625 | Failed Logon |
+| 4688 | Process Creation |
+| 4698 | Scheduled Task Created |
+| 4720 | User Account Created |
+| 4728 | User Added to Global Security Group |
+| 4732 | User Added to Local Security Group |
+| 4756 | User Added to Universal Security Group |
+| 5145 | Network Share Access |
 
-4624
+---
 
-Successful Logon
+# MITRE ATT&CK Quick Reference
 
-4625
+| Technique | ID |
+|---|---|
+| Brute Force | T1110 |
+| Valid Accounts | T1078 |
+| PowerShell | T1059.001 |
+| Account Discovery | T1087 |
+| Remote Desktop Protocol | T1021.001 |
+| Windows Admin Shares | T1021.002 |
+| OS Credential Dumping | T1003 |
+| LSASS Memory | T1003.001 |
+| Scheduled Task | T1053.005 |
+| Registry Run Keys | T1547.001 |
+| Exfiltration Over C2 Channel | T1041 |
 
-Failed Logon
+---
 
-4688
+## Notes
 
-Process Creation
-
-4698
-
-Scheduled Task Created
-
-4720
-
-User Account Created
-
-4728
-
-User Added to Global Security Group
-
-4732
-
-User Added to Local Security Group
-
-4756
-
-User Added to Universal Security Group
-
-5145
-
-Network Share Access
-
-MITRE ATT&CK Quick Reference
-
-Technique
-
-ID
-
-Brute Force
-
-T1110
-
-Valid Accounts
-
-T1078
-
-PowerShell
-
-T1059.001
-
-Account Discovery
-
-T1087
-
-Remote Desktop Protocol
-
-T1021.001
-
-Windows Admin Shares
-
-T1021.002
-
-OS Credential Dumping
-
-T1003
-
-LSASS Memory
-
-T1003.001
-
-Scheduled Task
-
-T1053.005
-
-Registry Run Keys
-
-T1060 / T1547.001
-
-Exfiltration Over C2 Channel
-
-T1041
-
-Notes
-
-Index names and field names vary between Splunk labs.
-
-Replace index=main, index=windows, and index=sysmon with the indexes used in your environment.
-
-Always validate detections against benign activity before turning a search into an alert.
+- Index names and field names vary between Splunk labs.
+- Replace `index=main`, `index=windows`, and `index=sysmon` with the indexes used in your environment.
+- Field names may differ depending on the sourcetype and lab.
+- Validate detections against benign activity before turning searches into alerts.
+- Save useful investigation queries and screenshots as evidence for the project.
